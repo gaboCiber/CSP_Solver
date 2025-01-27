@@ -1,8 +1,10 @@
 module Main where
 
 import qualified Data.Map as Map
-import CSP 
-import qualified Solvers
+import CSP
+--import qualified Solvers
+import Parser
+import Text.Megaparsec
 
 -- Variables
 x1, x2, x3 :: Expression Int
@@ -29,4 +31,13 @@ exampleCSP = CSP
 
 main :: IO ()
 main = do
-  print ( Solvers.bruteForceSolver exampleCSP)
+  parseTest integer "  123 "
+  parseTest integer "  -456  "
+  parseTest (symbol "+") "   +   "
+  parseTest expression "1 + 2 * 3 - 4"
+  parseTest expression "(1 + 2) * (3 - 4)"
+
+
+
+
+

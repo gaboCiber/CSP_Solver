@@ -18,6 +18,29 @@ data BoolExpression a
   | LogOp (Bool -> Bool -> Bool) (BoolExpression a) (BoolExpression a) -- Operador lógico genérico
   | Not (BoolExpression a)                              -- Operador lógico NOT
 
+showOP :: p -> String
+showOP op = case op of
+  (==) -> "=="
+  (/=) -> "/="
+  (<) -> "<"
+  (<=) -> "<="
+  (>) -> ">"
+  (>=) -> ">="
+  (+) -> "+"
+  (-) -> "-"
+  (*) -> "*"
+  (/) -> "/"
+  (&&) -> "&&"
+  (||) -> "||"
+instance Show a => Show (Expression a) where
+  show (Var v) = v
+  show (Val x) = show x
+  show (BinOp op e1 e2) = "( BinOp (" ++ showOP op ++ ") " ++ show e1 ++ " " ++ show e2 ++ ")"
+
+instance Show a => Show (BoolExpression a) where
+  show (RelOp op e1 e2) = "(" ++ show e1 ++ showOP op ++ show e2 ++ ")"
+  show (LogOp op e1 e2) = "(" ++ show e1 ++ showOP op ++ show e2 ++ ")"
+  show (Not e) = "NOT " ++ show e
 
 -- Restricciones basadas en expresiones
 type Constraint a = Assignment a -> Bool
