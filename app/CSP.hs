@@ -11,7 +11,7 @@ type Domain a = [a]
 data Expression a
   = Var Variable                  -- Variable simbólica
   | Val a                         -- Valor constante
-  | BinOp (a -> a -> a) (Expression a) (Expression a)  -- Operación binaria
+  | BinOp (a -> a -> Maybe a) (Expression a) (Expression a)  -- Operación binaria
 
 data BoolExpression a
   = RelOp (a -> a -> Bool) (Expression a) (Expression a) -- Operador relacional
@@ -45,14 +45,19 @@ instance Show a => Show (BoolExpression a) where
 -- Restricciones basadas en expresiones
 type Constraint a = Assignment a -> Bool
 
+eitherOp :: (Int -> Int -> Int) -> (String -> String -> String) -> Either Int String -> Either Int String -> Maybe (Either Int String)
+eitherOp intOp _ (Left a) (Left b) = Just (Left (intOp a b))  -- Operación con enteros
+eitherOp _ strOp (Right a) (Right b) = Just (Right (strOp a b))  -- Operación con strings
+eitherOp _ _ _ _ = Nothing  -- Si son tipos distintos, la operación falla
+
 -- Evaluación de expresiones
-evaluateExpr :: (Ord a) => Map.Map Variable a -> Expression a -> Maybe a
+evaluateExpr :: (Ord a) => Assignment a -> Expression a -> Maybe a
 evaluateExpr _ (Val x) = Just x
 evaluateExpr assignment (Var v) = Map.lookup v assignment
 evaluateExpr assignment (BinOp op e1 e2) = do
   v1 <- evaluateExpr assignment e1
   v2 <- evaluateExpr assignment e2
-  return (op v1 v2)
+  op v1 v2 
 
 -- Evaluación de expresiones booleanas
 evaluateBool :: (Ord a) => Map.Map Variable a -> BoolExpression a -> Maybe Bool
@@ -74,7 +79,6 @@ expressionConstraint expr assignment =
   case evaluateBool assignment expr of
     Just True -> True
     _         -> False
-
 
 -- Comprueba si una asignación satisface todas las restricciones
 satisfiesAllConstraints :: [Constraint a] -> Assignment a -> Bool
