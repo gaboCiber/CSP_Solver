@@ -30,15 +30,15 @@
   (major1) == 0 && (major2) <  7 || \
   (major1) == 0 && (major2) == 7 && (minor) <= 0)
 #endif /* MIN_VERSION_containers */
-/* package megaparsec-9.7.0 */
+/* package megaparsec-9.5.0 */
 #ifndef VERSION_megaparsec
-#define VERSION_megaparsec "9.7.0"
+#define VERSION_megaparsec "9.5.0"
 #endif /* VERSION_megaparsec */
 #ifndef MIN_VERSION_megaparsec
 #define MIN_VERSION_megaparsec(major1,major2,minor) (\
   (major1) <  9 || \
-  (major1) == 9 && (major2) <  7 || \
-  (major1) == 9 && (major2) == 7 && (minor) <= 0)
+  (major1) == 9 && (major2) <  5 || \
+  (major1) == 9 && (major2) == 5 && (minor) <= 0)
 #endif /* MIN_VERSION_megaparsec */
 /* package parsec-3.1.18.0 */
 #ifndef VERSION_parsec

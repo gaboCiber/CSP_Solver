@@ -1,93 +1,132 @@
+{-# LANGUAGE InstanceSigs #-}
 module CSP where
 
 import qualified Data.Map as Map
 
 -- Tipos básicos
 type Variable = String
-type Assignment a = Map.Map Variable a
-type Domain a = [a]
+type Assignment = Map.Map Variable (Either Int String)
+type Domain = [Either Int String]
+type Constraint = Assignment -> Bool
+
+
+-- Definición de operadores relacionales
+data BoolOpType = EqOp | NeqOp | LtOp | LeOp | GtOp | GeOp
+  deriving (Eq)
+
+instance Show BoolOpType where
+  show :: BoolOpType -> String
+  show EqOp = "=="
+  show NeqOp = "/="
+  show LtOp = "<"
+  show LeOp = "<="
+  show GtOp = ">"
+  show GeOp = ">"
+
+-- Definición de operadores aritméticos
+data BinOpType = AddOp | SubOp | MulOp | DivOp | ConcOp
+  deriving (Eq)
+
+instance Show BinOpType where
+  show :: BinOpType -> String
+  show AddOp = "+"
+  show SubOp = "-"
+  show MulOp = "*"
+  show DivOp = "/"
+  show ConcOp = "++"
+
+-- Definición de operadores aritméticos
+data LogOpType = AndOp | OrOp
+  deriving (Eq)
+
+instance Show LogOpType where
+  show :: LogOpType -> String
+  show AndOp = "&&"
+  show OrOp = "||"
 
 -- Definición de expresiones
-data Expression a
-  = Var Variable                  -- Variable simbólica
-  | Val a                         -- Valor constante
-  | BinOp (a -> a -> Maybe a) (Expression a) (Expression a)  -- Operación binaria
+data Expression
+  = Var Variable
+  | Val (Either Int String)
+  | BinOp BinOpType Expression Expression
 
-data BoolExpression a
-  = RelOp (a -> a -> Bool) (Expression a) (Expression a) -- Operador relacional
-  | LogOp (Bool -> Bool -> Bool) (BoolExpression a) (BoolExpression a) -- Operador lógico genérico
-  | Not (BoolExpression a)                              -- Operador lógico NOT
-
-showOP :: p -> String
-showOP op = case op of
-  (==) -> "=="
-  (/=) -> "/="
-  (<) -> "<"
-  (<=) -> "<="
-  (>) -> ">"
-  (>=) -> ">="
-  (+) -> "+"
-  (-) -> "-"
-  (*) -> "*"
-  (/) -> "/"
-  (&&) -> "&&"
-  (||) -> "||"
-instance Show a => Show (Expression a) where
+instance Show Expression where
   show (Var v) = v
   show (Val x) = show x
-  show (BinOp op e1 e2) = "( BinOp (" ++ showOP op ++ ") " ++ show e1 ++ " " ++ show e2 ++ ")"
+  show (BinOp op e1 e2) = "( BinOp ( " ++ show op ++ " ) ( " ++ show e1 ++ " ) ( " ++ show e2 ++ " ) "
 
-instance Show a => Show (BoolExpression a) where
-  show (RelOp op e1 e2) = "(" ++ show e1 ++ showOP op ++ show e2 ++ ")"
-  show (LogOp op e1 e2) = "(" ++ show e1 ++ showOP op ++ show e2 ++ ")"
+data BoolExpression
+  = RelOp BoolOpType Expression Expression
+  | LogOp LogOpType BoolExpression BoolExpression
+  | Not BoolExpression
+
+instance Show BoolExpression where
+  show (RelOp op e1 e2) = "( RelOp ( " ++ show op ++ " ) ( " ++ show e1 ++ " ) ( " ++ show e2 ++ " ) "
+  show (LogOp op e1 e2) = "( LogOp ( " ++ show op ++ " ) ( " ++ show e1 ++ " ) ( " ++ show e2 ++ " ) "
   show (Not e) = "NOT " ++ show e
 
--- Restricciones basadas en expresiones
-type Constraint a = Assignment a -> Bool
+-- Aplica operadores aritméticos `BinOpType` sobre `Either Int String`
+applyBinOp :: BinOpType -> Either Int String -> Either Int String -> Maybe (Either Int String)
+applyBinOp AddOp (Left a) (Left b) = Just (Left (a + b))
+applyBinOp SubOp (Left a) (Left b) = Just (Left (a - b)) 
+applyBinOp MulOp (Left a) (Left b) = Just (Left (a * b))
+applyBinOp DivOp (Left a) (Left b)
+  | b /= 0    = Just (Left (a `div` b))  -- División válida si `b ≠ 0`
+  | otherwise = Nothing  -- Evita división por 0
+applyBinOp ConcOp (Right a) (Right b) = Just (Right (a ++ b))  -- Concatenación de Strings
+applyBinOp _ _ _ = Nothing  -- Otros casos inválidos
 
-eitherOp :: (Int -> Int -> Int) -> (String -> String -> String) -> Either Int String -> Either Int String -> Maybe (Either Int String)
-eitherOp intOp _ (Left a) (Left b) = Just (Left (intOp a b))  -- Operación con enteros
-eitherOp _ strOp (Right a) (Right b) = Just (Right (strOp a b))  -- Operación con strings
-eitherOp _ _ _ _ = Nothing  -- Si son tipos distintos, la operación falla
+-- Aplica operadores relacionales `BoolOpType` sobre `Either Int String`
+applyBoolOpType :: BoolOpType -> Either Int String -> Either Int String -> Bool
+applyBoolOpType EqOp  = (==)
+applyBoolOpType NeqOp = (/=)
+applyBoolOpType LtOp  = (<)
+applyBoolOpType LeOp  = (<=)
+applyBoolOpType GtOp  = (>)
+applyBoolOpType GeOp  = (>=)
+
+applyLogOpType:: LogOpType -> Bool -> Bool -> Bool
+applyLogOpType AndOp = (&&)
+applyLogOpType OrOp = (||)
 
 -- Evaluación de expresiones
-evaluateExpr :: (Ord a) => Assignment a -> Expression a -> Maybe a
+evaluateExpr :: Assignment -> Expression -> Maybe (Either Int String)
 evaluateExpr _ (Val x) = Just x
 evaluateExpr assignment (Var v) = Map.lookup v assignment
 evaluateExpr assignment (BinOp op e1 e2) = do
   v1 <- evaluateExpr assignment e1
   v2 <- evaluateExpr assignment e2
-  op v1 v2 
+  applyBinOp op v1 v2  -- Aplica `applyBinOp` correctamente
 
 -- Evaluación de expresiones booleanas
-evaluateBool :: (Ord a) => Map.Map Variable a -> BoolExpression a -> Maybe Bool
+evaluateBool :: Assignment -> BoolExpression -> Maybe Bool
 evaluateBool assignment (RelOp op e1 e2) = do
   v1 <- evaluateExpr assignment e1
   v2 <- evaluateExpr assignment e2
-  return (op v1 v2)
+  return (applyBoolOpType op v1 v2)  -- Aplica `BoolOpType`
 evaluateBool assignment (LogOp op e1 e2) = do
   v1 <- evaluateBool assignment e1
   v2 <- evaluateBool assignment e2
-  return (op v1 v2)
+  return (applyLogOpType op v1 v2)
 evaluateBool assignment (Not e) = do
   v <- evaluateBool assignment e
   return (not v)
 
 -- Conversión de expresiones a restricciones
-expressionConstraint :: (Ord a) => BoolExpression a -> Constraint a
+expressionConstraint :: BoolExpression -> Constraint
 expressionConstraint expr assignment =
   case evaluateBool assignment expr of
     Just True -> True
     _         -> False
 
 -- Comprueba si una asignación satisface todas las restricciones
-satisfiesAllConstraints :: [Constraint a] -> Assignment a -> Bool
+satisfiesAllConstraints :: [Constraint] -> Assignment -> Bool
 satisfiesAllConstraints consts assignment =
   all (\constraint -> constraint assignment) consts
 
 -- Definición del CSP
-data CSP a = CSP
+data CSP = CSP
   { variables   :: [Variable]      -- Variables
-  , domains     :: Map.Map Variable (Domain a)  -- Dominios
-  , constraints :: [Constraint a]  -- Restricciones
+  , domains     :: Map.Map Variable Domain  -- Dominios
+  , constraints :: [Constraint]  -- Restricciones
   }

@@ -5,7 +5,7 @@ import qualified Data.Map as Map
 
 
 -- Genera todas las combinaciones posibles de asignaciones
-generateAssignments :: [Variable] -> Map.Map Variable (Domain a) -> [Assignment a]
+generateAssignments :: [Variable] -> Map.Map Variable (Domain) -> [Assignment]
 generateAssignments [] _ = [Map.empty]
 generateAssignments (v:vs) doms =
   case Map.lookup v doms of
@@ -17,6 +17,6 @@ generateAssignments (v:vs) doms =
       ]
 
 -- Resuelve un CSP mediante fuerza bruta
-bruteForceSolver :: (Ord a) => CSP a -> [Assignment a]
+bruteForceSolver :: CSP -> [Assignment]
 bruteForceSolver (CSP vars doms consts) =
   filter (satisfiesAllConstraints consts) (generateAssignments vars doms)
