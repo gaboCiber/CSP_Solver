@@ -29,11 +29,14 @@ createGUI window = do
     constraintsLabel <- labelNew (Just "Restricciones (ej: x1 < 5 && x2 == \"a\"):")
     resultLabel <- labelNew (Just "Resultados aparecerán aquí")
 
-    -- Selector de algoritmo
+        -- Selector de algoritmo
     algoLabel <- labelNew (Just "Seleccione el algoritmo:")
     algoCombo <- comboBoxNewText
     comboBoxAppendText algoCombo (T.pack "Brute Force")
     comboBoxAppendText algoCombo (T.pack "Backtracking")
+    comboBoxAppendText algoCombo (T.pack "Forward Checking")
+    comboBoxAppendText algoCombo (T.pack "Arc Consistency (AC-3)")
+    comboBoxAppendText algoCombo (T.pack "Min-Conflicts")
     comboBoxSetActive algoCombo 0  -- Selecciona "Brute Force" por defecto
 
     -- Botón
@@ -71,9 +74,15 @@ createGUI window = do
         constraintsEnd <- liftIO $ textBufferGetEndIter constraintsBuffer
         constraintsText <- liftIO $ textBufferGetText constraintsBuffer constraintsStart constraintsEnd True
 
-        -- Obtener el algoritmo seleccionado
+                -- Obtener el algoritmo seleccionado
         algoIndex <- liftIO $ comboBoxGetActive algoCombo
-        let solver = if algoIndex == 0 then bruteForceSolver else backtrackingSolver
+        let solver = case algoIndex of
+                      0 -> bruteForceSolver
+                      1 -> backtrackingSolver
+                      2 -> forwardCheckingSolver
+                      3 -> arcConsistencySolver
+                      4 -> minConflictsSolver 
+                      _ -> bruteForceSolver
 
         -- Parsear y recolectar errores
         let varsResult = parseVariables varsText
