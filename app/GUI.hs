@@ -1,6 +1,7 @@
 module GUI where
 
 import qualified Data.Map as Map
+import qualified Data.Text as T
 import Graphics.UI.Gtk
 import Control.Monad (void)
 import Control.Monad.Trans (liftIO)
@@ -28,6 +29,13 @@ createGUI window = do
     constraintsLabel <- labelNew (Just "Restricciones (ej: x1 < 5 && x2 == \"a\"):")
     resultLabel <- labelNew (Just "Resultados aparecerán aquí")
 
+    -- Selector de algoritmo
+    algoLabel <- labelNew (Just "Seleccione el algoritmo:")
+    algoCombo <- comboBoxNewText
+    comboBoxAppendText algoCombo (T.pack "Brute Force")
+    comboBoxAppendText algoCombo (T.pack "Backtracking")
+    comboBoxSetActive algoCombo 0  -- Selecciona "Brute Force" por defecto
+
     -- Botón
     solveButton <- buttonNewWithLabel "Resolver CSP"
 
@@ -38,6 +46,8 @@ createGUI window = do
     boxPackStart vbox domainsTextView PackGrow 0
     boxPackStart vbox constraintsLabel PackNatural 0
     boxPackStart vbox constraintsTextView PackGrow 0
+    boxPackStart vbox algoLabel PackNatural 0
+    boxPackStart vbox algoCombo PackNatural 0
     boxPackStart vbox solveButton PackNatural 0
     boxPackStart vbox resultLabel PackNatural 0
 
@@ -60,6 +70,10 @@ createGUI window = do
         constraintsStart <- liftIO $ textBufferGetStartIter constraintsBuffer
         constraintsEnd <- liftIO $ textBufferGetEndIter constraintsBuffer
         constraintsText <- liftIO $ textBufferGetText constraintsBuffer constraintsStart constraintsEnd True
+
+        -- Obtener el algoritmo seleccionado
+        algoIndex <- liftIO $ comboBoxGetActive algoCombo
+        let solver = if algoIndex == 0 then bruteForceSolver else backtrackingSolver
 
         -- Parsear y recolectar errores
         let varsResult = parseVariables varsText
@@ -89,6 +103,5 @@ createGUI window = do
                         , domains = doms
                         , constraints = constr
                         }
-                    solutions = bruteForceSolver csp
+                    solutions = solver csp  -- Usar el solver seleccionado
                 liftIO $ labelSetText resultLabel $ "Soluciones:\n" ++ show solutions
-
