@@ -120,13 +120,17 @@ expressionConstraint expr assignment =
     _         -> False
 
 -- Comprueba si una asignación satisface todas las restricciones
-satisfiesAllConstraints :: [Constraint] -> Assignment -> Bool
+-- satisfiesAllConstraints :: [Constraint] -> Assignment -> Bool
+-- satisfiesAllConstraints consts assignment =
+--   all (\constraint -> constraint assignment) consts
+
+satisfiesAllConstraints :: [BoolExpression] -> Assignment -> Bool
 satisfiesAllConstraints consts assignment =
-  all (\constraint -> constraint assignment) consts
+  all (`expressionConstraint` assignment) consts
 
 -- Definición del CSP
 data CSP = CSP
   { variables   :: [Variable]      -- Variables
   , domains     :: Map.Map Variable Domain  -- Dominios
-  , constraints :: [Constraint]  -- Restricciones
+  , constraints :: [BoolExpression]  -- Restricciones
   }

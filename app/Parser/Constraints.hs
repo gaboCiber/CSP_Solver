@@ -1,110 +1,129 @@
 module Constraints where
 
-import Text.Megaparsec
+import Text.Megaparsec 
 import Text.Megaparsec.Char
 import Data.Void
-import CSP (BoolExpression(..), Expression(..), BoolOpType(..), BinOpType(..), LogOpType(..))  
+import Control.Monad (void)
 import Variables (variableParser)
+import Control.Applicative ()
+import CSP
 
-type Parser = Parsec Void String  -- Tipo de parser
+type Parser = Parsec Void String
 
--- Parser para un número entero o string entre comillas
+-- Funciones auxiliares para espacios
+lexeme :: Parser a -> Parser a
+lexeme p = p <* hspace
+
+-- Parser de números y strings
 valueParser :: Parser (Either Int String)
 valueParser = (Left <$> numberParser) <|> (Right <$> stringParser)
 
--- Parser para un número entero
 numberParser :: Parser Int
-numberParser = read <$> some digitChar
+numberParser = lexeme (read <$> some digitChar)
 
--- Parser para una cadena entre comillas dobles ("texto")
 stringParser :: Parser String
-stringParser = char '"' *> manyTill anySingle (char '"')
+stringParser = lexeme (char '"' *> manyTill anySingle (char '"'))
 
--- Parser para operadores relacionales
-relOpParser :: Parser BoolOpType
-relOpParser = choice
-  [ string "=="  >> return EqOp
-  , string "/="  >> return NeqOp
-  , string "<="  >> return LeOp
-  , string "<"   >> return LtOp
-  , string ">="  >> return GeOp
-  , string ">"   >> return GtOp
-  ]
-
--- Parser para operadores binarios
-binOpParser :: Parser BinOpType
-binOpParser = choice
-  [ string "++" >> return ConcOp
-  ,  string "+"  >> return AddOp
-  , string "-"  >> return SubOp
-  , string "*"  >> return MulOp
-  , string "/"  >> return DivOp
-  ]
-
--- Parser para operadores lógicos
-logOpParser :: Parser LogOpType
-logOpParser = choice
-  [ string "&&" >> return AndOp
-  , string "||" >> return OrOp
-  ]
-
--- Parser para una variable o un valor constante
+-- Parser de expresiones aritméticas (con manejo de operadores relacionales)
 factorParser :: Parser Expression
-factorParser =
+factorParser = 
   choice
     [ Var <$> variableParser
     , Val <$> valueParser
-    , between (char '(' >> space) (char ')' >> space) exprParser
+    , between (lexeme (char '(')) (lexeme (char ')')) exprParser
     ]
 
--- Parser manual para términos con `*` y `/`
 termParser :: Parser Expression
 termParser = do
   first <- factorParser
-  rest <- many ((,) <$> (space *> binOpParser <* space) <*> factorParser)
-  return (foldl (\acc (op, expr) -> BinOp op acc expr) first rest)
+  rest <- many $ do
+    op <- lexeme $ choice
+      [ MulOp <$ char '*'
+      , try (DivOp <$ char '/' <* notFollowedBy (char '='))  -- ✅ Evita confundir "/" con "/="
+      ]
+    expr <- factorParser
+    return (op, expr)
+  return $ foldl (\acc (op, e) -> BinOp op acc e) first rest
 
--- Parser manual para expresiones con `+`, `-`, `++`
 exprParser :: Parser Expression
 exprParser = do
   first <- termParser
-  rest <- many ((,) <$> (space *> binOpParser <* space) <*> termParser)
-  return (foldl (\acc (op, expr) -> BinOp op acc expr) first rest)
+  rest <- many $ do
+    op <- lexeme $ choice
+      [ ConcOp <$ string "++" 
+      ,  AddOp  <$ char '+' <* notFollowedBy (char '+')
+      , SubOp  <$ char '-'
+      ]
+    expr <- termParser
+    return (op, expr)
+  return $ foldl (\acc (op, e) -> BinOp op acc e) first rest
 
--- Parser para una restricción con `RelOp`
+-- Parser de operadores relacionales (corregidos)
+relOpParser :: Parser BoolOpType
+relOpParser = lexeme $ choice
+  [ EqOp  <$ string "=="
+  , NeqOp <$ string "/="
+  , LeOp  <$ string "<="
+  , LtOp  <$ string "<"  <* notFollowedBy (char '=')  -- ✅ Evita confundir "<" con "<="
+  , GeOp  <$ string ">="
+  , GtOp  <$ string ">"  <* notFollowedBy (char '=')  -- ✅ Evita confundir ">" con ">="
+  ]
+
 relExprParser :: Parser BoolExpression
 relExprParser = do
-  space
   e1 <- exprParser
-  space
   op <- relOpParser
-  space
   e2 <- exprParser
-  space
-  return (RelOp op e1 e2)
+  return $ RelOp op e1 e2
+
+-- Parser de expresiones lógicas con paréntesis
+boolFactorParser :: Parser BoolExpression
+boolFactorParser = 
+  choice
+    [ between (lexeme (char '(')) (lexeme (char ')')) boolExprParser  -- ✅ Permite paréntesis anidados
+    , notParser
+    , relExprParser
+    ]
+
+logOpParser :: Parser LogOpType
+logOpParser = lexeme $ choice
+  [ AndOp <$ string "&&"
+  , OrOp  <$ string "||"
+  ]
+
+logExprParser :: Parser BoolExpression
+logExprParser = do
+  first <- boolFactorParser
+  rest <- many $ do
+    op <- logOpParser
+    expr <- boolFactorParser
+    return (op, expr)
+  return $ foldl (\acc (op, e) -> LogOp op acc e) first rest
+
+notParser :: Parser BoolExpression
+notParser = do
+  _ <- lexeme $ string "NOT"
+  Not <$> boolFactorParser
+
+boolExprParser :: Parser BoolExpression
+boolExprParser = logExprParser
 
 -- Función auxiliar para parsear una restricción individual
 parseRelExpr :: String -> Either (ParseErrorBundle String Void) BoolExpression
 parseRelExpr = parse relExprParser "relExpr"
 
--- Parser para la negación `NOT`
-notParser :: Parser BoolExpression
-notParser = do 
-  _ <- string "NOT"
-  space
-  Not <$> boolExprParser
+-- Función principal
+parseBoolExpr :: String -> Either (ParseErrorBundle String Void) BoolExpression
+parseBoolExpr = parse (space *> boolExprParser <* eof) "boolExpr"
 
--- Parser para expresiones booleanas con `&&` y `||`
-logExprParser :: Parser BoolExpression
-logExprParser = do
-  first <- relExprParser
-  rest <- many ((,) <$> (space *> logOpParser <* space) <*> relExprParser)
-  return (foldl (\acc (op, expr) -> LogOp op acc expr) first rest)
+-- Parser para múltiples restricciones (una por línea)
+constraintsParser :: Parser [BoolExpression]
+constraintsParser = do
+  skipMany (void spaceChar)  -- ✅ Ignora espacios iniciales
+  c <- lexeme boolExprParser `sepEndBy` newline  -- ✅ Una restricción por línea
+  eof  -- ✅ Asegura que no haya input residual
+  return c
 
--- Parser general de expresiones booleanas
-boolExprParser :: Parser BoolExpression
-boolExprParser = try notParser <|> logExprParser
-
-parseBoolExprParser:: String -> Either (ParseErrorBundle String Void) BoolExpression
-parseBoolExprParser = parse boolExprParser "logExpr"
-
+-- Función auxiliar para parsear una lista de restricciones
+parseConstraints :: String -> Either (ParseErrorBundle String Void) [BoolExpression]
+parseConstraints = parse constraintsParser "constraints"

@@ -7,6 +7,7 @@ import Domains
 import Constraints
 import Solvers
 import Data.Either
+import Control.Arrow (ArrowChoice(right))
 
 
 
@@ -60,24 +61,36 @@ import Data.Either
 -- --   , constraints = [constraint2, constraint3, constraint4, constraint5]
 -- --   }
 
--- exampleMixedCSP = CSP
---   { variables   = getVariables (parseVariables "x1, x2, x3")
---   , domains     = fromRight Map.empty (parseDomains "x1: {1,2, \"rojo\", \"azul\"} \n x2: {3,4, \"verde\", \"amarillo\"} \n x3: {4,6, \"rojoverde\", \"azulamarillo\"} \n")
---   , constraints = [constraint1, constraint2, constraint3, constraint4]
---   }
+exampleMixedCSP :: CSP
+exampleMixedCSP = CSP
+  { variables   = fromRight [] (parseVariables "x1, x2, x3")
+  , domains     = fromRight Map.empty (parseDomains "x1: {1,2, \"rojo\", \"azul\"} \n x2: {3,4, \"verde\", \"amarillo\"} \n x3: {4,6, \"rojoverde\", \"azulamarillo\"} \n")
+  , constraints = fromRight [] (parseConstraints "x1 + x2 - x3 == 0 \n x1 - x2 /= 0 \n x1 /= 1 \n x2 /= \"rojo\"")
+  }
 
 main :: IO ()
 main = do
-  --print (parseVariables  "A, B, C, o")
-  --print (parseDomain "{\"rojo \", \"azul\"  ,   \"verde\"}" )
-  --print (parseDomains "var_1: {10, 20} \n y2: {\"hola\", \"mundo\"}")
-  --print (bruteForceSolver exampleCSP)
-  --print (bruteForceSolver exampleMixedCSP)
-  --print (parseRelExpr "x1 < 5")
-  --let expr = RelOp LtOp (Val (Left 3)) (Val (Left 10))
-  --print (evaluateBool Map.empty expr)
-  print (parseRelExpr "x1 < 5" )
-  print (parseRelExpr "x1 * (x2 + x3) == x4")
-  print (parseRelExpr "x1 * x2 + x3 == x4")
-  print (parseRelExpr "x1 ++ x2 == \"hello world\"")
-  print (parseBoolExprParser "x1 < 5 && x2 >= 10")
+
+  -- print (bruteForceSolver exampleCSP)
+  print (bruteForceSolver exampleMixedCSP)
+
+  -- print (parseVariables  "A, B, C, o")
+
+  -- print (parseDomain "{\"rojo \", \"azul\"  ,   \"verde\"}" )
+  -- print (parseDomains "var_1: {10, 20} \n y2: {\"hola\", \"mundo\"}")
+
+  -- print (parseRelExpr "x1 < 5")
+  -- let expr = RelOp LtOp (Val (Left 3)) (Val (Left 10))
+  -- print (evaluateBool Map.empty expr)
+  -- print (parseRelExpr "x1 < 5" )
+  -- print (parseRelExpr "x1 * (x2 + x3) == x4")
+  -- print (parseRelExpr "x1 * x2 + x3 == x4")
+  -- print (parseRelExpr "x1 ++ x2 == \"hello world\"")
+  -- print (parseBoolExpr "x1 < 5 && x2 >= 10 || x3 /= 4")
+  -- print (parseBoolExpr "x1 < 5 && (x2 >= 10 || x3 == \"hello world\")")
+  -- print (parseBoolExpr "x1 + x2 * 3 < 10 || x3 == 5")
+  -- print (parseBoolExpr "NOT (x1 > 5 || x2 < 3)")
+  -- print (parseBoolExpr "   4 > 55   ")
+  -- print (parseConstraints " 4 > 5    \n    25 > 10 \n NOT (x1 > 5 || x2 < 3) \n x1 < 5 && (x2 >= 10 || x3 == \"hello world\")")
+  -- print (parseConstraints "x1 + x2 == x3 \n x1 /= x2 \n x1 /= 1 \n x2 /= \"rojo\"")
+  -- print (parseConstraints "x1 + x2 - x3 == 0 \n x1 - x2 /= 0 \n x1 /= 1 \n x2 /= \"rojo\"")
