@@ -24,11 +24,18 @@ numberParser = lexeme (read <$> some digitChar)
 stringParser :: Parser String
 stringParser = lexeme (char '"' *> manyTill anySingle (char '"'))
 
+unaryMinusParser :: Parser Expression
+unaryMinusParser = try $ do  -- `try` para evitar fallos en backtracking
+  _ <- lexeme (char '~')
+  expr <- factorParser
+  return (BinOp MulOp (Val (Left (-1))) expr)
+
 -- Parser de expresiones aritméticas (con manejo de operadores relacionales)
 factorParser :: Parser Expression
 factorParser = 
   choice
-    [ Var <$> variableParser
+    [ try unaryMinusParser 
+    , Var <$> variableParser
     , Val <$> valueParser
     , between (lexeme (char '(')) (lexeme (char ')')) exprParser
     ]
@@ -39,7 +46,7 @@ termParser = do
   rest <- many $ do
     op <- lexeme $ choice
       [ MulOp <$ char '*'
-      , try (DivOp <$ char '/' <* notFollowedBy (char '='))  -- ✅ Evita confundir "/" con "/="
+      , try (DivOp <$ char '/' <* notFollowedBy (char '='))  -- Evita confundir "/" con "/="
       ]
     expr <- factorParser
     return (op, expr)
@@ -64,9 +71,9 @@ relOpParser = lexeme $ choice
   [ EqOp  <$ string "=="
   , NeqOp <$ string "/="
   , LeOp  <$ string "<="
-  , LtOp  <$ string "<"  <* notFollowedBy (char '=')  -- ✅ Evita confundir "<" con "<="
+  , LtOp  <$ string "<"  <* notFollowedBy (char '=')  -- Evita confundir "<" con "<="
   , GeOp  <$ string ">="
-  , GtOp  <$ string ">"  <* notFollowedBy (char '=')  -- ✅ Evita confundir ">" con ">="
+  , GtOp  <$ string ">"  <* notFollowedBy (char '=')  -- Evita confundir ">" con ">="
   ]
 
 relExprParser :: Parser BoolExpression
@@ -80,7 +87,7 @@ relExprParser = do
 boolFactorParser :: Parser BoolExpression
 boolFactorParser = 
   choice
-    [ between (lexeme (char '(')) (lexeme (char ')')) boolExprParser  -- ✅ Permite paréntesis anidados
+    [ between (lexeme (char '(')) (lexeme (char ')')) boolExprParser  -- Permite paréntesis anidados
     , notParser
     , relExprParser
     ]
@@ -119,9 +126,9 @@ parseBoolExpr = parse (space *> boolExprParser <* eof) "boolExpr"
 -- Parser para múltiples restricciones (una por línea)
 constraintsParser :: Parser [BoolExpression]
 constraintsParser = do
-  skipMany (void spaceChar)  -- ✅ Ignora espacios iniciales
-  c <- lexeme boolExprParser `sepEndBy` newline  -- ✅ Una restricción por línea
-  eof  -- ✅ Asegura que no haya input residual
+  skipMany (void spaceChar)  -- Ignora espacios iniciales
+  c <- lexeme boolExprParser `sepEndBy` newline  -- Una restricción por línea
+  eof  -- Asegura que no haya input residual
   return c
 
 -- Función auxiliar para parsear una lista de restricciones
