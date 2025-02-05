@@ -1,6 +1,8 @@
 {-# LANGUAGE InstanceSigs #-}
 module CSP where
 
+import Data.List (intercalate)
+import Data.Either (fromLeft, fromRight)
 import qualified Data.Map as Map
 
 -- Tipos básicos
@@ -119,14 +121,27 @@ expressionConstraint expr assignment =
     Just True -> True
     _         -> False
 
--- Comprueba si una asignación satisface todas las restricciones
--- satisfiesAllConstraints :: [Constraint] -> Assignment -> Bool
--- satisfiesAllConstraints consts assignment =
---   all (\constraint -> constraint assignment) consts
-
 satisfiesAllConstraints :: [BoolExpression] -> Assignment -> Bool
 satisfiesAllConstraints consts assignment =
   all (`expressionConstraint` assignment) consts
+
+-- Función para convertir un valor Either a String
+eitherToString :: Either Int String -> String
+eitherToString (Left i) = show i
+eitherToString (Right s) = show s
+
+-- Función para convertir una asignación a JSON
+assignmentToJson :: Assignment -> String
+assignmentToJson assignment =
+  " { " ++ intercalate ", " (map toJsonPair (Map.toList assignment)) ++ " } "
+  where
+    toJsonPair (var, val) = var ++ ": " ++ eitherToString val
+
+-- Función para imprimir una lista de asignaciones en formato JSON
+printAssignmentsResults :: [Assignment] -> String
+printAssignmentsResults assignments =
+  "[ " ++ intercalate ", " (map assignmentToJson assignments) ++ " ] "
+
 
 -- Definición del CSP
 data CSP = CSP
