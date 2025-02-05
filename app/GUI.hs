@@ -3,6 +3,7 @@ module GUI where
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import Graphics.UI.Gtk
+import Graphics.UI.Gtk.Layout.HPaned
 import Control.Monad (void)
 import Control.Monad.Trans (liftIO)
 import CSP
@@ -12,105 +13,113 @@ import Constraints (parseBoolExpr, parseConstraints)
 import Solvers
 import Data.Either
 import Text.Megaparsec (ParseErrorBundle, errorBundlePretty)
+import Data.Void (Void)
 
 createGUI :: Window -> IO ()
 createGUI window = do
-    vbox <- vBoxNew False 10
-    containerAdd window vbox
+    set window [ windowTitle := "CSP Solver",
+                 windowDefaultWidth := 800,
+                 windowDefaultHeight := 600 ]
 
-    -- Campos de entrada
+    hpaned <- hPanedNew
+    containerAdd window hpaned
+
+    leftPanel <- vBoxNew False 10
+    panedAdd1 hpaned leftPanel
+
+    rightPanel <- vBoxNew False 10
+    panedAdd2 hpaned rightPanel
+
+    createInputField leftPanel "Variables (ej: x1, x2):"
     varsTextView <- textViewNew
+    packTextView leftPanel varsTextView
+
+    createInputField leftPanel "Dominios (ej: x1: {1,2}, x2: {\"a\",\"b\"}):"
     domainsTextView <- textViewNew
+    packTextView leftPanel domainsTextView
+
+    createInputField leftPanel "Restricciones (ej: x1 < 5 && x2 == \"a\"):"
     constraintsTextView <- textViewNew
+    packTextView leftPanel constraintsTextView
 
-    -- Labels
-    varsLabel <- labelNew (Just "Variables (ej: x1, x2):")
-    domainsLabel <- labelNew (Just "Dominios (ej: x1: {1,2}, x2: {\"a\",\"b\"}):")
-    constraintsLabel <- labelNew (Just "Restricciones (ej: x1 < 5 && x2 == \"a\"):")
-    resultLabel <- labelNew (Just "Resultados aparecerán aquí")
-
-        -- Selector de algoritmo
-    algoLabel <- labelNew (Just "Seleccione el algoritmo:")
+    controlsBox <- hBoxNew False 10
+    boxPackStart leftPanel controlsBox PackNatural 0
+    
     algoCombo <- comboBoxNewText
-    comboBoxAppendText algoCombo (T.pack "Brute Force")
-    comboBoxAppendText algoCombo (T.pack "Backtracking")
-    comboBoxAppendText algoCombo (T.pack "Forward Checking")
-    comboBoxAppendText algoCombo (T.pack "Arc Consistency (AC-3)")
-    comboBoxAppendText algoCombo (T.pack "Min-Conflicts")
-    comboBoxSetActive algoCombo 0  -- Selecciona "Brute Force" por defecto
+    mapM_ (comboBoxAppendText algoCombo . T.pack)
+        ["Brute Force", "Backtracking", "Forward Checking", "Arc Consistency (AC-3)", "Min-Conflicts"]
+    comboBoxSetActive algoCombo 0
+    boxPackStart controlsBox algoCombo PackGrow 0
 
-    -- Botón
     solveButton <- buttonNewWithLabel "Resolver CSP"
+    boxPackStart controlsBox solveButton PackNatural 0
 
-    -- Layout
-    boxPackStart vbox varsLabel PackNatural 0
-    boxPackStart vbox varsTextView PackGrow 0
-    boxPackStart vbox domainsLabel PackNatural 0
-    boxPackStart vbox domainsTextView PackGrow 0
-    boxPackStart vbox constraintsLabel PackNatural 0
-    boxPackStart vbox constraintsTextView PackGrow 0
-    boxPackStart vbox algoLabel PackNatural 0
-    boxPackStart vbox algoCombo PackNatural 0
-    boxPackStart vbox solveButton PackNatural 0
-    boxPackStart vbox resultLabel PackNatural 0
+    resultLabel <- labelNew (Just "Resultados aparecerán aquí")
+    labelSetLineWrap resultLabel True
+    scrolledResults <- scrolledWindowNew Nothing Nothing
+    containerAdd scrolledResults resultLabel
+    boxPackStart rightPanel scrolledResults PackGrow 0
 
-    -- Manejador del botón
     void $ solveButton `on` buttonPressEvent $ tryEvent $ do
-        -- Obtener texto de varsTextView
-        varsBuffer <- liftIO $ textViewGetBuffer varsTextView
-        varsStart <- liftIO $ textBufferGetStartIter varsBuffer
-        varsEnd <- liftIO $ textBufferGetEndIter varsBuffer
-        varsText <- liftIO $ textBufferGetText varsBuffer varsStart varsEnd True
+        varsText <- getTextFromView varsTextView
+        domainsText <- getTextFromView domainsTextView
+        constraintsText <- getTextFromView constraintsTextView
 
-        -- Obtener texto de domainsTextView
-        domainsBuffer <- liftIO $ textViewGetBuffer domainsTextView
-        domainsStart <- liftIO $ textBufferGetStartIter domainsBuffer
-        domainsEnd <- liftIO $ textBufferGetEndIter domainsBuffer
-        domainsText <- liftIO $ textBufferGetText domainsBuffer domainsStart domainsEnd True
-
-        -- Obtener texto de constraintsTextView
-        constraintsBuffer <- liftIO $ textViewGetBuffer constraintsTextView
-        constraintsStart <- liftIO $ textBufferGetStartIter constraintsBuffer
-        constraintsEnd <- liftIO $ textBufferGetEndIter constraintsBuffer
-        constraintsText <- liftIO $ textBufferGetText constraintsBuffer constraintsStart constraintsEnd True
-
-                -- Obtener el algoritmo seleccionado
         algoIndex <- liftIO $ comboBoxGetActive algoCombo
         let solver = case algoIndex of
                       0 -> bruteForceSolver
                       1 -> backtrackingSolver
                       2 -> forwardCheckingSolver
                       3 -> arcConsistencySolver
-                      4 -> minConflictsSolver 
+                      4 -> minConflictsSolver
                       _ -> bruteForceSolver
 
-        -- Parsear y recolectar errores
         let varsResult = parseVariables varsText
             domsResult = parseDomains domainsText
             constrResult = parseConstraints constraintsText
+            allErrors = lefts [varsResult] ++ 
+                        lefts [domsResult] ++ 
+                        lefts [constrResult]
 
-            -- Lista de errores (si existen)
-            varErrors = [err | Left err <- [varsResult]]
-            domErrors = [err | Left err <- [domsResult]]
-            constrErrors = [err | Left err <- [constrResult]]
-
-            allErrors = varErrors ++ domErrors ++ constrErrors
-
-        -- Si hay errores, mostrarlos
         if not (null allErrors)
-            then do
-                let errorMsg = "Errores de parseo:\n" ++ unlines (map errorBundlePretty allErrors)
-                liftIO $ labelSetText resultLabel errorMsg
+            then showErrors resultLabel allErrors
             else do
-                -- Extraer valores correctos
                 let Right vars = varsResult
                     Right doms = domsResult
                     Right constr = constrResult
+                    csp = CSP vars doms constr
+                    solutions = solver csp
+                liftIO $ labelSetText resultLabel $ formatSolutions solutions
 
-                    csp = CSP 
-                        { variables = vars
-                        , domains = doms
-                        , constraints = constr
-                        }
-                    solutions = solver csp  -- Usar el solver seleccionado
-                liftIO $ labelSetText resultLabel $ "Soluciones:\n" ++ show solutions
+        liftIO $ panedSetPosition hpaned 400
+
+    widgetShowAll window
+
+-- Funciones auxiliares (sin cambios)
+createInputField :: VBox -> String -> IO ()
+createInputField container labelText = do
+    label <- labelNew (Just labelText)
+    boxPackStart container label PackNatural 0
+
+packTextView :: VBox -> TextView -> IO ()
+packTextView container textView = do
+    scrolled <- scrolledWindowNew Nothing Nothing
+    scrolledWindowSetPolicy scrolled PolicyAutomatic PolicyAutomatic
+    containerAdd scrolled textView
+    boxPackStart container scrolled PackGrow 0
+
+getTextFromView :: TextView -> EventM EButton String
+getTextFromView view = do
+    buffer <- liftIO $ textViewGetBuffer view
+    start <- liftIO $ textBufferGetStartIter buffer
+    end <- liftIO $ textBufferGetEndIter buffer
+    liftIO $ textBufferGetText buffer start end True
+
+showErrors :: Label -> [ParseErrorBundle String Void] -> EventM EButton ()
+showErrors label errors = do
+    let errorMsg = "Errores de parseo:\n" ++ unlines (map errorBundlePretty errors)
+    liftIO $ labelSetText label errorMsg
+
+formatSolutions :: [Assignment] -> String
+formatSolutions [] = "No se encontraron soluciones"
+formatSolutions solutions = unlines $ map show solutions
