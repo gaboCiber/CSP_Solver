@@ -27,14 +27,20 @@ stringParser = lexeme (char '"' *> manyTill anySingle (char '"'))
 unaryMinusParser :: Parser Expression
 unaryMinusParser = try $ do  -- `try` para evitar fallos en backtracking
   _ <- lexeme (char '~')
-  expr <- factorParser
-  return (BinOp MulOp (Val (Left (-1))) expr)
+  BinOp MulOp (Val (Left (- 1))) <$> factorParser
+
+unaryAbsParser :: Parser Expression
+unaryAbsParser = do
+  _ <- lexeme (string "abs")  -- ✅ Detecta `abs`
+  expr <- between (lexeme (char '(')) (lexeme (char ')')) exprParser
+  return (UnaryOp AbsOp expr)  -- ✅ Devuelve `UnaryOp AbsOp`
 
 -- Parser de expresiones aritméticas (con manejo de operadores relacionales)
 factorParser :: Parser Expression
 factorParser = 
   choice
-    [ try unaryMinusParser 
+    [ try unaryAbsParser  
+    , try unaryMinusParser 
     , Var <$> variableParser
     , Val <$> valueParser
     , between (lexeme (char '(')) (lexeme (char ')')) exprParser

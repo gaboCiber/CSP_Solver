@@ -38,6 +38,15 @@ instance Show BinOpType where
   show ConcOp = "++"
 
 -- Definición de operadores aritméticos
+
+-- Definición de operadores unarios
+data UnaryOpType = AbsOp
+  deriving (Eq)
+
+instance Show UnaryOpType where
+  show :: UnaryOpType -> String
+  show AbsOp = "abs"
+
 data LogOpType = AndOp | OrOp
   deriving (Eq)
 
@@ -51,11 +60,13 @@ data Expression
   = Var Variable
   | Val (Either Int String)
   | BinOp BinOpType Expression Expression
+  | UnaryOp UnaryOpType Expression 
 
 instance Show Expression where
   show (Var v) = v
   show (Val x) = show x
   show (BinOp op e1 e2) = "( BinOp ( " ++ show op ++ " ) ( " ++ show e1 ++ " ) ( " ++ show e2 ++ " ) "
+  show (UnaryOp op e) = "( UnaryOp ( " ++ show op ++ " ) ( " ++ show e ++ " )"
 
 data BoolExpression
   = RelOp BoolOpType Expression Expression
@@ -68,6 +79,11 @@ instance Show BoolExpression where
   show (Not e) = "NOT " ++ show e
 
 -- Aplica operadores aritméticos `BinOpType` sobre `Either Int String`
+applyUnaryOp :: UnaryOpType -> Either Int String -> Maybe (Either Int String)
+applyUnaryOp AbsOp (Left a) = Just (Left (abs a))  -- abs()` solo aplica a números
+applyUnaryOp _ _ = Nothing  -- No aplica a Strings
+
+
 applyBinOp :: BinOpType -> Either Int String -> Either Int String -> Maybe (Either Int String)
 applyBinOp AddOp (Left a) (Left b) = Just (Left (a + b))
 applyBinOp SubOp (Left a) (Left b) = Just (Left (a - b)) 
@@ -99,6 +115,9 @@ evaluateExpr assignment (BinOp op e1 e2) = do
   v1 <- evaluateExpr assignment e1
   v2 <- evaluateExpr assignment e2
   applyBinOp op v1 v2  -- Aplica `applyBinOp` correctamente
+evaluateExpr assignment (UnaryOp op e) = do
+  v <- evaluateExpr assignment e
+  applyUnaryOp op v 
 
 -- Evaluación de expresiones booleanas
 evaluateBool :: Assignment -> BoolExpression -> Maybe Bool
