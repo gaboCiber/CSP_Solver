@@ -156,11 +156,10 @@ assignmentToJson assignment =
   where
     toJsonPair (var, val) = var ++ ": " ++ eitherToString val
 
--- Función para imprimir una lista de asignaciones en formato JSON
+-- Función para imprimir una lista de asignaciones en formato JSON con saltos de línea
 printAssignmentsResults :: [Assignment] -> String
 printAssignmentsResults assignments =
-  "[ " ++ intercalate ", " (map assignmentToJson assignments) ++ " ] "
-
+  "[" ++ intercalate ",\n" (map assignmentToJson assignments) ++ "]\n"
 
 -- Definición del CSP
 data CSP = CSP

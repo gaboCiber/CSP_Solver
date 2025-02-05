@@ -74,22 +74,20 @@ createGUI window = do
                       4 -> minConflictsSolver
                       _ -> bruteForceSolver
 
-        let varsResult = parseVariables varsText
-            domsResult = parseDomains domainsText
+        let varsResult   = parseVariables varsText
+            domsResult   = parseDomains domainsText
             constrResult = parseConstraints constraintsText
-            allErrors = lefts [varsResult] ++ 
-                        lefts [domsResult] ++ 
-                        lefts [constrResult]
+            allErrors    = lefts [varsResult] ++ lefts [domsResult] ++ lefts [constrResult]
 
         if not (null allErrors)
             then showErrors resultLabel allErrors
             else do
-                let Right vars = varsResult
-                    Right doms = domsResult
+                let Right vars   = varsResult
+                    Right doms   = domsResult
                     Right constr = constrResult
-                    csp = CSP vars doms constr
-                    solutions = solver csp
-                liftIO $ labelSetText resultLabel $ formatSolutions solutions
+                    csp          = CSP vars doms constr
+                    solutions    = solver csp
+                liftIO $ labelSetText resultLabel $ printAssignmentsResults solutions
 
         liftIO $ panedSetPosition hpaned 400
 
@@ -119,7 +117,3 @@ showErrors :: Label -> [ParseErrorBundle String Void] -> EventM EButton ()
 showErrors label errors = do
     let errorMsg = "Errores de parseo:\n" ++ unlines (map errorBundlePretty errors)
     liftIO $ labelSetText label errorMsg
-
-formatSolutions :: [Assignment] -> String
-formatSolutions [] = "No se encontraron soluciones"
-formatSolutions solutions = unlines $ map show solutions
