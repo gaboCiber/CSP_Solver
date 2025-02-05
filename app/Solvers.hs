@@ -1,10 +1,11 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Solvers where
 
 import CSP
 import qualified Data.Map as Map
 import Data.List (minimumBy)
 import Data.Ord (comparing)
-import Data.Maybe (isNothing, fromJust)
+import Data.Maybe (isNothing, fromJust, fromMaybe)
 
 -------------------------------
 -- Algoritmo de Fuerza Bruta --
@@ -30,7 +31,6 @@ bruteForceSolver (CSP vars doms consts) =
 -- Algoritmo de Backtracking --
 -------------------------------
 
--- **Backtracking Solver**
 backtrackingSolver :: CSP -> [Assignment]
 backtrackingSolver csp = backtrack csp Map.empty
 
@@ -66,114 +66,148 @@ nextUnassignedVariable csp assignment =
 -- Algoritmo Forward Checking --
 --------------------------------
 
+-- Forward Checking Solver que usa backtracking con forward checking
 forwardCheckingSolver :: CSP -> [Assignment]
-forwardCheckingSolver (CSP vars doms consts) = fcSearch Map.empty vars doms
-  where
-    fcSearch :: Assignment -> [Variable] -> Map.Map Variable Domain -> [Assignment]
-    fcSearch assignment [] _ = [assignment]
-    fcSearch assignment (v:vs) doms =
-      [ result
-      | value <- Map.findWithDefault [] v doms
-      , let newAssignment = Map.insert v value assignment
-      , let newDoms = forwardCheck consts newAssignment vs doms
-      , all (not . null) (Map.elems newDoms)
-      , result <- fcSearch newAssignment vs newDoms
-      ]
+forwardCheckingSolver csp = forwardCheckBacktrack csp Map.empty (domains csp)
 
-    forwardCheck :: [BoolExpression] -> Assignment -> [Variable] -> Map.Map Variable Domain -> Map.Map Variable Domain
-    forwardCheck consts assignment vs doms = foldr (reduceDomain consts assignment) doms vs
+-- Backtracking con Forward Checking
+forwardCheckBacktrack :: CSP -> Assignment -> Map.Map Variable Domain -> [Assignment]
+forwardCheckBacktrack csp assignment currentDomains
+  -- Si todas las variables están asignadas, se evalúan todas las restricciones
+  | length assignment == length (variables csp) =
+      if satisfiesAllConstraints (constraints csp) assignment
+      then [assignment]
+      else []
+  | otherwise =
+      case nextUnassignedVariable csp assignment of
+        Nothing -> []
+        Just var ->
+          case Map.lookup var currentDomains of
+            Nothing -> []
+            Just domain ->
+              concatMap (tryAssignValue csp assignment currentDomains var) domain
 
+-- Intenta asignar un valor a una variable y aplica forward checking
+tryAssignValue :: CSP -> Assignment -> Map.Map Variable Domain -> Variable -> Either Int String -> [Assignment]
+tryAssignValue csp assignment currentDomains var value =
+  let newAssignment = Map.insert var value assignment
+      newDomains    = applyForwardChecking csp newAssignment currentDomains var value
+  in case newDomains of
+       Nothing -> []  -- Si algún dominio queda vacío, se hace backtracking
+       Just reducedDomains -> forwardCheckBacktrack csp newAssignment reducedDomains
 
--- forwardCheckingSolver :: CSP -> [Assignment]
--- forwardCheckingSolver csp = backtrackFC csp Map.empty (domains csp)
+-- Aplica forward checking: actualiza los dominios de las variables aún no asignadas
+applyForwardChecking :: CSP -> Assignment -> Map.Map Variable Domain -> Variable -> Either Int String -> Maybe (Map.Map Variable Domain)
+applyForwardChecking csp assignment domains var value =
+  let updatedDomains = foldl (pruneDomain csp assignment var value) domains (variables csp)
+  in if any null (Map.elems updatedDomains)
+       then Nothing
+       else Just updatedDomains
 
--- -- **Backtracking con Forward Checking**
--- backtrackFC :: CSP -> Assignment -> Map.Map Variable Domain -> [Assignment]
--- backtrackFC csp assignment currentDomains
---   | length assignment == length (variables csp) =
---       if satisfiesAllConstraints (constraints csp) assignment
---       then [assignment]  -- ✅ Solución encontrada
---       else []
---   | otherwise =
---       case nextUnassignedVariable csp assignment of
---         Nothing -> []
---         Just var ->
---           case Map.lookup var currentDomains of
---             Nothing -> []
---             Just domain -> concatMap (tryValueFC csp assignment currentDomains var) domain
-
--- -- **Intentar asignar un valor con Forward Checking**
--- tryValueFC :: CSP -> Assignment -> Map.Map Variable Domain -> Variable -> Either Int String -> [Assignment]
--- tryValueFC csp assignment currentDomains var value =
---   let newAssignment = Map.insert var value assignment
---       reducedDomains = applyForwardChecking csp newAssignment currentDomains var value
---   in if isNothing reducedDomains  -- ❌ Si Forward Checking vacía algún dominio, hacer backtrack
---      then []
---      else backtrackFC csp newAssignment (fromJust reducedDomains)
-
--- -- **Aplicar Forward Checking**
--- applyForwardChecking :: CSP -> Assignment -> Map.Map Variable Domain -> Variable -> Either Int String -> Maybe (Map.Map Variable Domain)
--- applyForwardChecking csp assignment domains var value =
---   let updatedDomains = foldl (pruneDomain csp assignment var value) domains (variables csp)
---   in if any null (Map.elems updatedDomains)  -- ❌ Si algún dominio queda vacío, hacer backtrack
---      then Nothing
---      else Just updatedDomains
-
--- -- **Eliminar valores inválidos de los dominios no asignados**
--- pruneDomain :: CSP -> Assignment -> Variable -> Either Int String -> Map.Map Variable Domain -> Variable -> Map.Map Variable Domain
--- pruneDomain csp assignment var _ dom otherVar
---   | otherVar == var = dom  -- ❌ No modificar la variable ya asignada
---   | Map.member otherVar assignment = dom  -- ❌ No modificar variables ya asignadas
---   | otherwise =
---       let filteredDomain = filter (\val -> isConsistent csp assignment var otherVar val) 
---                               (Map.findWithDefault [] otherVar dom)
---       in Map.insert otherVar filteredDomain dom
-
--- -- **Verificar si la asignación es consistente con las restricciones locales**
--- isConsistent :: CSP -> Assignment -> Variable -> Variable -> Either Int String -> Bool
--- isConsistent csp assignment assignedVar checkingVar value =
---   let tempAssignment = Map.insert checkingVar value assignment
---   in all (\constraint -> expressionConstraint constraint tempAssignment) (relevantConstraints csp assignedVar checkingVar)
-
--- -- **Obtener restricciones relevantes**
--- relevantConstraints :: CSP -> Variable -> Variable -> [BoolExpression]
--- relevantConstraints csp assignedVar checkingVar =
---   filter (\constraint -> assignedVar `elem` getVariablesInConstraint constraint
---                       && checkingVar `elem` getVariablesInConstraint constraint)
---          (constraints csp)
-
--- -- **Extraer variables que aparecen en una restricción**
--- getVariablesInConstraint :: BoolExpression -> [Variable]
--- getVariablesInConstraint (RelOp _ e1 e2) = getVariablesInExpr e1 ++ getVariablesInExpr e2
--- getVariablesInConstraint (LogOp _ b1 b2) = getVariablesInConstraint b1 ++ getVariablesInConstraint b2
--- getVariablesInConstraint (Not b) = getVariablesInConstraint b
-
--- getVariablesInExpr :: Expression -> [Variable]
--- getVariablesInExpr (Var v) = [v]
--- getVariablesInExpr (Val _) = []
--- getVariablesInExpr (BinOp _ e1 e2) = getVariablesInExpr e1 ++ getVariablesInExpr e2
+-- Elimina de los dominios de variables no asignadas aquellos valores que no sean consistentes
+pruneDomain :: CSP -> Assignment -> Variable -> Either Int String -> Map.Map Variable Domain -> Variable -> Map.Map Variable Domain
+pruneDomain csp assignment assignedVar _ dom otherVar
+  | otherVar == assignedVar = dom  -- No modificamos la variable ya asignada
+  | Map.member otherVar assignment = dom  -- No se modifica el dominio de variables ya asignadas
+  | otherwise =
+      let domainValues   = Map.findWithDefault [] otherVar dom
+          filteredDomain = filter (\val ->
+                              let tempAssignment      = Map.insert otherVar val assignment
+                                  relevantConstraints = filter (isConstraintRelevant assignedVar otherVar) (constraints csp)
+                              in all (\constr -> partialConstraintSatisfied constr tempAssignment) relevantConstraints
+                            ) domainValues
+      in Map.insert otherVar filteredDomain dom
 
 
---------------------------------------
--- Algoritmo Arc Consistency (AC-3) --
---------------------------------------
+-- Evalúa una restricción en una asignación parcial.
+-- Si todas las variables de la restricción están asignadas, se requiere que se cumpla.
+-- Si no, se asume que no está violada aún.
+partialConstraintSatisfied :: BoolExpression -> Assignment -> Bool
+partialConstraintSatisfied expr assignment =
+  let vars = getVariablesInConstraint expr
+  in if all (`Map.member` assignment) vars
+       then case evaluateBool assignment expr of
+              Just True -> True
+              _         -> False
+       else True
+
+-- Determina si una restricción involucra ambas variables:
+-- la variable a la que se acaba de asignar y la variable cuyo dominio se está filtrando.
+isConstraintRelevant :: Variable -> Variable -> BoolExpression -> Bool
+isConstraintRelevant v1 v2 constraint =
+  let vars = getVariablesInConstraint constraint
+  in v1 `elem` vars && v2 `elem` vars
+
+-- Extrae las variables involucradas en una expresión booleana
+getVariablesInConstraint :: BoolExpression -> [Variable]
+getVariablesInConstraint (RelOp _ e1 e2) = getVariablesInExpr e1 ++ getVariablesInExpr e2
+getVariablesInConstraint (LogOp _ b1 b2) = getVariablesInConstraint b1 ++ getVariablesInConstraint b2
+getVariablesInConstraint (Not b) = getVariablesInConstraint b
+
+-- Extrae las variables involucradas en una expresión
+getVariablesInExpr :: Expression -> [Variable]
+getVariablesInExpr (Var v) = [v]
+getVariablesInExpr (Val _) = []
+getVariablesInExpr (BinOp _ e1 e2) = getVariablesInExpr e1 ++ getVariablesInExpr e2
+
+
+
+------------------------------
+-- AC-3 (Arc Consistency 3) --
+------------------------------
 
 arcConsistencySolver :: CSP -> [Assignment]
-arcConsistencySolver (CSP vars doms consts) = acSearch Map.empty vars (makeArcConsistent consts Map.empty vars doms)
-  where
-    acSearch :: Assignment -> [Variable] -> Map.Map Variable Domain -> [Assignment]
-    acSearch assignment [] _ = [assignment]
-    acSearch assignment (v:vs) doms =
-      [ result
-      | value <- Map.findWithDefault [] v doms
-      , let newAssignment = Map.insert v value assignment
-      , let newDoms = makeArcConsistent consts newAssignment vs doms
-      , all (not . null) (Map.elems newDoms)
-      , result <- acSearch newAssignment vs newDoms
-      ]
+arcConsistencySolver (CSP vars doms consts) =
+  let reducedDoms = ac3 vars doms consts
+      reducedCSP  = CSP vars reducedDoms consts
+  in bruteForceSolver reducedCSP
 
-    makeArcConsistent :: [BoolExpression] -> Assignment -> [Variable] -> Map.Map Variable Domain -> Map.Map Variable Domain
-    makeArcConsistent consts assignment vs doms = foldr (reduceDomain consts assignment) doms vs
+
+-- Genera la cola de arcos relevantes: solo aquellos pares (xi,xj)
+-- para los cuales existe al menos una restricción que involucre ambas.
+ac3 :: [Variable] -> Map.Map Variable Domain -> [BoolExpression] -> Map.Map Variable Domain
+ac3 vars doms consts =
+  let arcs = [(xi, xj) | xi <- vars, xj <- vars, xi /= xj, any (\c -> constraintInvolves c xi && constraintInvolves c xj) consts]
+  in ac3Process arcs doms consts
+
+-- Procesa la cola de arcos
+ac3Process :: [(Variable, Variable)] -> Map.Map Variable Domain -> [BoolExpression] -> Map.Map Variable Domain
+ac3Process [] doms _ = doms
+ac3Process ((xi, xj):queue) doms consts =
+  let (revised, newDoms) = revise xi xj doms consts
+      -- Si se modificó el dominio de xi, se reinsertan en la cola los arcos (xk, xi)
+      newQueue = if revised
+                   then queue ++ [(xk, xi) | xk <- Map.keys newDoms, xk /= xi, any (\c -> constraintInvolves c xk && constraintInvolves c xi) consts]
+                   else queue
+  in ac3Process newQueue newDoms consts
+
+-- Revisa el arco (xi, xj): elimina de xi los valores sin soporte en xj
+revise :: Variable -> Variable -> Map.Map Variable Domain -> [BoolExpression] -> (Bool, Map.Map Variable Domain)
+revise xi xj doms consts =
+  let domainXi = Map.findWithDefault [] xi doms
+      domainXj = Map.findWithDefault [] xj doms
+      -- Filtra solo las restricciones que involucran ambas variables:
+      relConstraints = [ c | c <- consts, constraintInvolves c xi, constraintInvolves c xj ]
+      -- Para cada valor vi de xi, se conserva si existe algún vj en xj que, en la asignación parcial,
+      -- haga que *todas* las restricciones relevantes se evalúen de forma satisfactoria (o no evaluables aún)
+      reviseValue vi = any (\vj ->
+                              all (\c -> partialConstraintSatisfied c (Map.fromList [(xi, vi), (xj, vj)]))
+                                  relConstraints
+                           ) domainXj
+      newDomainXi = filter reviseValue domainXi
+      revised     = length newDomainXi < length domainXi
+      newDoms     = Map.insert xi newDomainXi doms
+  in (revised, newDoms)
+
+---------------------------------------------------------
+-- Funciones auxiliares para evaluar restricciones parciales
+---------------------------------------------------------
+
+-- Determina si una restricción involucra a una variable dada.
+constraintInvolves :: BoolExpression -> Variable -> Bool
+constraintInvolves expr var = var `elem` getVariablesInConstraint expr
+
+
 
 -----------------------------
 -- Algoritmo Min-Conflicts --
